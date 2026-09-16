@@ -1,17 +1,20 @@
 "use client";
 
 import {
-  Activity,
   AlertTriangle,
+  Calendar,
   Check,
   ChevronDown,
   ChevronUp,
   Copy,
   Database,
+  Home,
   MapPin,
+  MoreHorizontal,
   Plus,
   RefreshCw,
   Save,
+  Scale,
   Shield,
   Trash2,
   Users,
@@ -159,6 +162,46 @@ function initialState(): AppState {
 
 function displayFriendName(friend: FriendRecord) {
   return friend.status === "accepted" && friend.displayName ? friend.displayName : friend.localAlias;
+}
+
+function friendInitial(name: string) {
+  return name.trim().slice(0, 1) || "?";
+}
+
+function meetingStateLabel(state: MeetingState | undefined) {
+  const labels: Partial<Record<MeetingState, string>> = {
+    draft: "초안",
+    collecting: "준비 중",
+    calculating: "찾는 중",
+    calculation_failed: "다시 시도",
+    voting: "투표 중",
+    region_locked: "지역 확정",
+    venue_voting: "장소 고르는 중",
+    confirmed: "장소 확정",
+    completed: "끝남"
+  };
+  return state ? labels[state] ?? state : "아직 없음";
+}
+
+function formatWhen(value: string) {
+  if (!value) return "시간 미정";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "short",
+    day: "numeric",
+    weekday: "short",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(date);
+}
+
+function navKind(tab: TabKey) {
+  if (tab === "home") return "home";
+  if (tab === "friends" || tab === "groups") return "people";
+  if (tab === "meeting" || tab === "participants" || tab === "results" || tab === "vote") return "meeting";
+  if (tab === "ledger") return "ledger";
+  return "settings";
 }
 
 function buildParticipant(friend: FriendRecord, group: GroupRecord | null): ParticipantInput {
@@ -439,7 +482,7 @@ export function FairTurnApp() {
       selectedVenueId: null,
       inviteToken: "demo-invite-token",
       demoData: true,
-      warnings: ["데모 데이터로 시작했습니다. 계산 결과도 명시적 Fixture Provider를 사용합니다."],
+      warnings: ["샘플로 시작했어요. 실제 대중교통 결과가 아니라 미리 넣어 둔 경로입니다."],
       relaxationMessage: null
     };
     setState({
@@ -675,38 +718,62 @@ export function FairTurnApp() {
 
   const lockedCandidate = activeMeeting?.candidates.find((candidate) => candidate.id === activeMeeting.lockedCandidateId) ?? null;
 
+  const currentNav = navKind(activeTab);
+  const activeFriends = state.friends.filter((friend) => friend.active);
+
+  function openMeetingTab() {
+    if (!activeMeeting) {
+      setActiveTab("meeting");
+      return;
+    }
+    if (activeMeeting.candidates.length > 0) {
+      setActiveTab(activeMeeting.lockedCandidateId ? "vote" : "results");
+      return;
+    }
+    setActiveTab("participants");
+  }
+
   return (
     <main className="app-shell">
       <header className="topbar">
-        <div>
-          <p className="eyebrow">FairTurn</p>
-          <h1>만날 장소, 번갈아가며 공평하게</h1>
+        <div className="brand-lockup">
+          <div className="logo-mark" aria-hidden>F</div>
+          <div>
+            <h1>FairTurn</h1>
+            <p>이번엔 네가 덜 가게</p>
+          </div>
         </div>
         <div className="status-strip" aria-live="polite">
-          <StateBadge label={offline ? "오프라인" : "온라인"} tone={offline ? "bad" : "good"} />
-          <StateBadge label={activeMeeting ? activeMeeting.state : "빈 상태"} tone={activeMeeting?.state === "calculation_failed" ? "bad" : "neutral"} />
-          {activeMeeting?.demoData ? <StateBadge label="데모 데이터" tone="warn" /> : null}
-          {activeMeeting ? <StateBadge label={`revision ${activeMeeting.revision}`} /> : null}
+          {offline ? <StateBadge label="오프라인" tone="bad" /> : null}
+          <StateBadge
+            label={meetingStateLabel(activeMeeting?.state)}
+            tone={activeMeeting?.state === "calculation_failed" ? "bad" : activeMeeting?.state === "confirmed" || activeMeeting?.state === "completed" ? "good" : "neutral"}
+          />
+          {activeMeeting?.demoData ? <StateBadge label="샘플" tone="warn" /> : null}
         </div>
       </header>
 
-      <nav className="tabs" aria-label="FairTurn 주요 화면">
-        {[
-          ["home", "홈"],
-          ["friends", "친구"],
-          ["groups", "그룹"],
-          ["meeting", "모임"],
-          ["participants", "입력/초대"],
-          ["results", "후보"],
-          ["vote", "투표/장소"],
-          ["ledger", "기록"],
-          ["settings", "설정/API"]
-        ].map(([key, label]) => (
-          <button key={key} type="button" className={activeTab === key ? "active" : ""} onClick={() => setActiveTab(key as TabKey)}>
-            {label}
-          </button>
-        ))}
-      </nav>
+      {navKind(activeTab) === "meeting" ? (
+        <nav className="stepper" aria-label="약속 진행 단계">
+          {[
+            ["meeting", "일정"],
+            ["participants", "출발"],
+            ["results", "추천"],
+            ["vote", "투표"]
+          ].map(([key, label]) => (
+            <button key={key} type="button" className={activeTab === key ? "active" : ""} onClick={() => setActiveTab(key as TabKey)}>
+              {label}
+            </button>
+          ))}
+        </nav>
+      ) : null}
+
+      {navKind(activeTab) === "people" ? (
+        <nav className="stepper" aria-label="친구와 그룹">
+          <button type="button" className={activeTab === "friends" ? "active" : ""} onClick={() => setActiveTab("friends")}>친구</button>
+          <button type="button" className={activeTab === "groups" ? "active" : ""} onClick={() => setActiveTab("groups")}>그룹</button>
+        </nav>
+      ) : null}
 
       {error ? (
         <section className="notice bad" role="alert">
@@ -717,31 +784,39 @@ export function FairTurnApp() {
       ) : null}
 
       {activeTab === "home" ? (
-        <section className="screen two-col">
+        <section className="screen">
           <div className="hero-panel">
-            <p className="eyebrow">여러 번 만날수록 더 공평해지는 약속</p>
-            <h2>이번엔 가까운 쪽, 다음엔 먼 쪽이 덜 가게.</h2>
+            <p className="eyebrow">안녕, {state.profileName || "친구"}</p>
+            <h2>중간이 아니라, 모이기 쉬운 곳에서.</h2>
             <p>
-              중간 지점이 아니라, 실제로 모이기 쉬운 역·상권에서 고릅니다. 지난 만남의 이동 부담도 같이 봅니다.
+              지난번에 멀리 온 사람이 있으면, 이번엔 그쪽이 덜 가게 맞춰 줍니다. 주소는 친구에게 공개되지 않아요.
             </p>
             <div className="actions">
-              <button type="button" className="primary" onClick={loadDemo}>
-                <Activity size={18} /> 4인 데모 불러오기
+              <button type="button" className="primary" onClick={() => createMeetingFromGroup()} disabled={activeFriends.length < 2}>
+                <Calendar size={18} /> 약속 만들기
               </button>
-              <button type="button" onClick={addFriend}>
-                <Plus size={18} /> 친구 추가
-              </button>
+              <button type="button" onClick={loadDemo}>샘플로 둘러보기</button>
             </div>
           </div>
-          <div className="panel">
-            <h3>현재 상태</h3>
-            <ul className="metric-list">
-              <li><span>친구</span><strong>{state.friends.filter((friend) => friend.active).length}명</strong></li>
-              <li><span>그룹</span><strong>{state.groups.length}개</strong></li>
-              <li><span>모임</span><strong>{state.meetings.length}개</strong></li>
-              <li><span>공유 위치 정책</span><strong>정확 좌표 비공개</strong></li>
-            </ul>
+          <div className="home-stats">
+            <div className="home-stat"><span>친구</span><strong>{activeFriends.length}</strong></div>
+            <div className="home-stat"><span>그룹</span><strong>{state.groups.length}</strong></div>
+            <div className="home-stat"><span>약속</span><strong>{state.meetings.length}</strong></div>
           </div>
+          {activeMeeting ? (
+            <article className="next-card">
+              <p className="eyebrow">다가오는 약속</p>
+              <h3>{activeMeeting.title}</h3>
+              <div className="next-meta">
+                <span className="pill">{formatWhen(activeMeeting.startsAt)}</span>
+                <span className="pill">{activeMeeting.participants.length}명</span>
+                <span className="pill">{meetingStateLabel(activeMeeting.state)}</span>
+              </div>
+              <button type="button" className="primary" onClick={openMeetingTab}>이어서 정하기</button>
+            </article>
+          ) : (
+            <div className="empty">아직 약속이 없어요. 친구를 넣고 첫 만남을 만들어 보세요.</div>
+          )}
         </section>
       ) : null}
 
@@ -749,42 +824,50 @@ export function FairTurnApp() {
         <section className="screen">
           <div className="section-header">
             <div>
-              <p className="eyebrow">친구 관리</p>
-              <h2>내가 부르는 이름과 친구가 쓰는 이름을 나눠 둡니다.</h2>
+              <p className="eyebrow">내 사람들</p>
+              <h2>부를 이름만 적어도 약속을 시작할 수 있어요.</h2>
             </div>
             <button type="button" className="primary" onClick={addFriend}><Plus size={18} /> 친구 추가</button>
           </div>
-          {duplicateFriendNames.length > 0 ? <div className="notice warn">중복 친구 이름 감지: {duplicateFriendNames.join(", ")}</div> : null}
-          {state.friends.length === 0 ? <div className="empty">아직 친구가 없습니다. 친구를 추가하면 자동으로 `친구 1` 이름이 붙습니다.</div> : null}
+          {duplicateFriendNames.length > 0 ? <div className="notice warn">같은 이름이 있어요: {duplicateFriendNames.join(", ")}</div> : null}
+          {state.friends.length === 0 ? <div className="empty">아직 친구가 없어요. 추가하면 &quot;친구 1&quot;처럼 임시 이름이 붙습니다.</div> : null}
           <div className="list">
             {[...state.friends].sort((a, b) => a.order - b.order).map((friend) => (
-              <article className="row-item" key={friend.id}>
-                <div>
-                  <label>개인 별명</label>
-                  <input value={friend.localAlias} onChange={(event) => updateFriend(friend.id, { localAlias: event.target.value })} />
-                </div>
-                <div>
-                  <label>본인 표시 이름</label>
-                  <input value={friend.displayName ?? ""} placeholder="초대 수락 후 설정" onChange={(event) => updateFriend(friend.id, { displayName: event.target.value || null, status: event.target.value ? "accepted" : friend.status })} />
-                </div>
-                <div>
-                  <label>출발 권역</label>
-                  <select value={friend.defaultLocationKey} onChange={(event) => updateFriend(friend.id, { defaultLocationKey: event.target.value as keyof typeof LOCATION_PRESETS })}>
-                    {Object.entries(LOCATION_PRESETS).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label>최대 이동/환승/도보</label>
-                  <div className="inline-inputs">
-                    <input type="number" value={friend.maxTravelMinutes} onChange={(event) => updateFriend(friend.id, { maxTravelMinutes: Number(event.target.value) })} aria-label="최대 이동시간" />
-                    <input type="number" value={friend.maxTransfers} onChange={(event) => updateFriend(friend.id, { maxTransfers: Number(event.target.value) })} aria-label="최대 환승" />
-                    <input type="number" value={friend.maxWalkMinutes} onChange={(event) => updateFriend(friend.id, { maxWalkMinutes: Number(event.target.value) })} aria-label="최대 도보" />
+              <article className="person-card" key={friend.id}>
+                <div className="avatar" aria-hidden>{friendInitial(displayFriendName(friend))}</div>
+                <div className="person-main">
+                  <div className="person-head">
+                    <div>
+                      <h3>{displayFriendName(friend)}</h3>
+                      <div className="next-meta">
+                        <span className="pill">{LOCATION_PRESETS[friend.defaultLocationKey].label}</span>
+                        <span className="pill">{friend.maxTravelMinutes}분</span>
+                        <StateBadge label={friend.status === "accepted" ? "수락" : friend.status === "inactive" ? "숨김" : "초대됨"} tone={friend.status === "accepted" ? "good" : "neutral"} />
+                      </div>
+                    </div>
+                    <div className="row-actions">
+                      <IconButton label="위로 이동" onClick={() => moveFriend(friend.id, -1)}><ChevronUp size={18} /></IconButton>
+                      <IconButton label="아래로 이동" onClick={() => moveFriend(friend.id, 1)}><ChevronDown size={18} /></IconButton>
+                      <IconButton label="목록에서 빼기" onClick={() => updateFriend(friend.id, { active: false, status: "inactive" })}><Trash2 size={18} /></IconButton>
+                    </div>
                   </div>
-                </div>
-                <div className="row-actions">
-                  <IconButton label="위로 이동" onClick={() => moveFriend(friend.id, -1)}><ChevronUp size={18} /></IconButton>
-                  <IconButton label="아래로 이동" onClick={() => moveFriend(friend.id, 1)}><ChevronDown size={18} /></IconButton>
-                  <IconButton label="활성 목록에서 제거" onClick={() => updateFriend(friend.id, { active: false, status: "inactive" })}><Trash2 size={18} /></IconButton>
+                  <div className="form-grid wide">
+                    <label>내가 부르는 이름<input value={friend.localAlias} onChange={(event) => updateFriend(friend.id, { localAlias: event.target.value })} /></label>
+                    <label>친구가 쓰는 이름<input value={friend.displayName ?? ""} placeholder="아직 없으면 비워 두세요" onChange={(event) => updateFriend(friend.id, { displayName: event.target.value || null, status: event.target.value ? "accepted" : friend.status })} /></label>
+                    <label>출발 동네
+                      <select value={friend.defaultLocationKey} onChange={(event) => updateFriend(friend.id, { defaultLocationKey: event.target.value as keyof typeof LOCATION_PRESETS })}>
+                        {Object.entries(LOCATION_PRESETS).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}
+                      </select>
+                    </label>
+                    <div>
+                      <label>이동 한도 (분 / 환승 / 도보)</label>
+                      <div className="inline-inputs">
+                        <input type="number" value={friend.maxTravelMinutes} onChange={(event) => updateFriend(friend.id, { maxTravelMinutes: Number(event.target.value) })} aria-label="최대 이동시간" />
+                        <input type="number" value={friend.maxTransfers} onChange={(event) => updateFriend(friend.id, { maxTransfers: Number(event.target.value) })} aria-label="최대 환승" />
+                        <input type="number" value={friend.maxWalkMinutes} onChange={(event) => updateFriend(friend.id, { maxWalkMinutes: Number(event.target.value) })} aria-label="최대 도보" />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </article>
             ))}
@@ -796,8 +879,8 @@ export function FairTurnApp() {
         <section className="screen">
           <div className="section-header">
             <div>
-              <p className="eyebrow">그룹</p>
-              <h2>그룹마다 누가 많이 움직였는지 따로 쌓입니다.</h2>
+              <p className="eyebrow">자주 만나는 사람들</p>
+              <h2>그룹마다 이동 부담이 따로 쌓여요.</h2>
             </div>
           </div>
           <div className="panel form-grid">
@@ -820,9 +903,9 @@ export function FairTurnApp() {
               <article className="panel" key={group.id}>
                 <div className="section-header small">
                   <h3>{group.name}</h3>
-                  <button type="button" onClick={() => createMeetingFromGroup(group)}>이 그룹으로 모임 만들기</button>
+                  <button type="button" onClick={() => createMeetingFromGroup(group)}>이 그룹으로 약속</button>
                 </div>
-                <p>멤버 {group.memberFriendIds.length}명 · 기본 프리셋 {PRESET_LABELS[group.defaultPreset]} · 최근 허브 {group.recentHubs.join(", ") || "없음"}</p>
+                <p>{group.memberFriendIds.length}명 · {PRESET_LABELS[group.defaultPreset]} · 최근 {group.recentHubs.join(", ") || "아직 없음"}</p>
                 <LedgerBars ledger={group.ledger} friends={state.friends} />
               </article>
             ))}
@@ -834,13 +917,13 @@ export function FairTurnApp() {
         <section className="screen two-col">
           <div className="panel">
             <div className="section-header small">
-              <h2>새 모임 만들기</h2>
-              <button type="button" className="primary" onClick={() => createMeetingFromGroup()} disabled={state.friends.filter((friend) => friend.active).length < 2}>
-                <Plus size={18} /> 모임 생성
+              <h2>언제, 무엇을 할지</h2>
+              <button type="button" className="primary" onClick={() => createMeetingFromGroup()} disabled={activeFriends.length < 2}>
+                <Plus size={18} /> 새 약속
               </button>
             </div>
             {activeMeeting ? (
-              <div className="form-grid">
+              <div className="form-grid wide">
                 <label>제목<input value={activeMeeting.title} onChange={(event) => updateMeeting({ title: event.target.value })} /></label>
                 <label>시작시각<input type="datetime-local" value={activeMeeting.startsAt} onChange={(event) => updateMeeting({ startsAt: event.target.value, revision: activeMeeting.revision + 1 })} /></label>
                 <label>예상 종료<input type="datetime-local" value={activeMeeting.expectedEndsAt} onChange={(event) => updateMeeting({ expectedEndsAt: event.target.value, revision: activeMeeting.revision + 1 })} /></label>
@@ -863,7 +946,7 @@ export function FairTurnApp() {
                   </div>
                 </div>
               </div>
-            ) : <div className="empty">모임이 없습니다. 친구 2명 이상을 만든 뒤 모임을 생성하세요.</div>}
+            ) : <div className="empty">아직 약속이 없어요. 친구 2명 이상을 넣으면 바로 만들 수 있어요.</div>}
           </div>
           <StatusPanel meeting={activeMeeting} warnings={activeMeeting?.warnings ?? []} />
         </section>
@@ -873,20 +956,20 @@ export function FairTurnApp() {
         <section className="screen">
           <div className="section-header">
             <div>
-              <p className="eyebrow">참여자별 비공개 입력</p>
-              <h2>정확한 주소는 친구에게 공유되지 않습니다.</h2>
+              <p className="eyebrow">출발만 알려 주세요</p>
+              <h2>정확한 주소는 친구에게 안 보여요.</h2>
             </div>
             <div className="actions">
-              <button type="button" onClick={addGuestParticipant}><Users size={18} /> 비회원 추가</button>
+              <button type="button" onClick={addGuestParticipant}><Users size={18} /> 손님 추가</button>
               <button type="button" className="primary" onClick={calculate} disabled={!activeMeeting || activeMeeting.participants.length < 2 || loading}>
-                <RefreshCw size={18} /> {loading ? "계산 중" : "후보 계산"}
+                <RefreshCw size={18} /> {loading ? "찾는 중" : "만날 곳 찾기"}
               </button>
             </div>
           </div>
           {activeMeeting ? (
             <>
               <div className="notice">
-                <Copy size={18} /> 초대 링크: <code>{`${typeof window !== "undefined" ? window.location.origin : ""}/invite/${activeMeeting.inviteToken}`}</code>
+                <Copy size={18} /> 초대 링크: <code>{`${hydrated ? window.location.origin : ""}/invite/${activeMeeting.inviteToken}`}</code>
               </div>
               <div className="list">
                 {activeMeeting.participants.map((participant) => (
@@ -924,7 +1007,7 @@ export function FairTurnApp() {
                 ))}
               </div>
             </>
-          ) : <div className="empty">활성 모임이 없습니다.</div>}
+          ) : <div className="empty">먼저 약속을 만들어 주세요.</div>}
         </section>
       ) : null}
 
@@ -932,11 +1015,11 @@ export function FairTurnApp() {
         <section className="screen">
           <div className="section-header">
             <div>
-              <p className="eyebrow">후보 지역 결과</p>
-              <h2>균형, 놀기, 귀가 좋은 곳을 겹치지 않게 보여 줍니다.</h2>
+              <p className="eyebrow">여기 어때요</p>
+              <h2>공평하고, 놀기 좋고, 집에 가기 쉬운 곳을 나눠 보여요.</h2>
             </div>
             <button type="button" className="primary" onClick={calculate} disabled={!activeMeeting || loading}>
-              <RefreshCw size={18} /> 재계산
+              <RefreshCw size={18} /> 다시 찾기
             </button>
           </div>
           {activeMeeting?.relaxationMessage ? <div className="notice warn"><AlertTriangle size={18} /> {activeMeeting.relaxationMessage}</div> : null}
@@ -951,7 +1034,7 @@ export function FairTurnApp() {
                         <h3>{candidate.hub.displayName}</h3>
                         <p>{candidate.hub.region}</p>
                       </div>
-                      <strong>{Math.round(candidate.score.finalScore)}점</strong>
+                      <div className="score-chip">{Math.round(candidate.score.finalScore)}</div>
                     </div>
                     <div className="badges">
                       {candidate.candidateTypes.map((type) => <StateBadge key={type} label={candidateTypeLabel(type)} tone="good" />)}
@@ -960,7 +1043,7 @@ export function FairTurnApp() {
                       {candidate.explanationFacts.map((fact) => <li key={fact.label}><span>{fact.label}</span><strong>{fact.value}</strong></li>)}
                     </ul>
                     <details>
-                      <summary>사람별 부담과 데이터 출처</summary>
+                      <summary>사람별 이동 시간 보기</summary>
                       <div className="table-scroll">
                         <table>
                           <thead><tr><th>참여자</th><th>부담</th><th>이동</th><th>환승</th><th>도보</th><th>교통비</th></tr></thead>
@@ -971,74 +1054,77 @@ export function FairTurnApp() {
                                 <tr key={burden.participantId}>
                                   <td>{burden.participantName}</td>
                                   <td>{burden.total === null ? "미확인" : Math.round(burden.total)}</td>
-                                  <td>{route?.totalTravelMinutes.value ?? "unknown"}분</td>
-                                  <td>{route?.transfers.value ?? "unknown"}</td>
-                                  <td>{route?.walkMinutes.value ?? "unknown"}분</td>
-                                  <td>{route?.fareWon.value ?? "unknown"}원</td>
+                                  <td>{route?.totalTravelMinutes.value ?? "미확인"}분</td>
+                                  <td>{route?.transfers.value ?? "미확인"}</td>
+                                  <td>{route?.walkMinutes.value ?? "미확인"}분</td>
+                                  <td>{route?.fareWon.value ?? "미확인"}원</td>
                                 </tr>
                               );
                             })}
                           </tbody>
                         </table>
                       </div>
-                      <p className="hint">Provider: fixture-transit · ODsay live routing is not used here · missing: {candidate.missing.slice(0, 4).join(", ")}</p>
+                      <p className="hint">샘플 경로로 계산한 값이에요. 실제 막차·혼잡도는 아직 비어 있을 수 있습니다.</p>
                     </details>
-                    <button type="button" onClick={() => lockRegion(candidate.id)}><MapPin size={18} /> 이 지역 확정</button>
+                    <button type="button" onClick={() => lockRegion(candidate.id)}><MapPin size={18} /> 여기로 정하기</button>
                   </article>
                 ))}
               </div>
             </div>
-          ) : <div className="empty">계산된 후보가 없습니다. 입력 상태를 확인하고 후보 계산을 실행하세요.</div>}
+          ) : <div className="empty">아직 추천이 없어요. 출발지를 확인한 뒤 만날 곳 찾기를 눌러 주세요.</div>}
         </section>
       ) : null}
 
       {activeTab === "vote" ? (
         <section className="screen two-col">
           <div className="panel">
-            <p className="eyebrow">지역 투표</p>
-            <h2>이번 후보에 한 표씩 남깁니다.</h2>
+            <p className="eyebrow">한 표씩</p>
+            <h2>이번 후보 중에서 골라 주세요.</h2>
             {activeMeeting?.candidates.length ? (
               <>
                 <div className="form-grid">
-                  <label>참여자
+                  <label>누가 고르나요
                     <select value={voteParticipantId} onChange={(event) => setVoteParticipantId(event.target.value)}>
                       <option value="">선택</option>
                       {activeMeeting.participants.map((participant) => <option value={participant.id} key={participant.id}>{participant.displayName}</option>)}
                     </select>
                   </label>
-                  <label>후보
+                  <label>어디가 좋아요
                     <select value={voteCandidateId} onChange={(event) => setVoteCandidateId(event.target.value)}>
                       <option value="">선택</option>
                       {activeMeeting.candidates.map((candidate) => <option value={candidate.id} key={candidate.id}>{candidate.hub.displayName}</option>)}
                     </select>
                   </label>
                 </div>
-                <button type="button" className="primary" onClick={voteForCandidate}><Vote size={18} /> 투표 저장</button>
+                <button type="button" className="primary" onClick={voteForCandidate}><Vote size={18} /> 투표하기</button>
                 <div className="notice">
-                  {voteResult?.reason} · 미투표 {voteResult?.missingParticipantIds.length ?? 0}명
+                  {voteResult?.reason} · 아직 {voteResult?.missingParticipantIds.length ?? 0}명
                 </div>
-                <button type="button" onClick={() => lockRegion()} disabled={!activeMeeting.candidates.length}><Check size={18} /> 투표 결과로 지역 확정</button>
+                <button type="button" onClick={() => lockRegion()} disabled={!activeMeeting.candidates.length}><Check size={18} /> 투표 결과로 정하기</button>
               </>
-            ) : <div className="empty">투표할 후보가 없습니다.</div>}
+            ) : <div className="empty">먼저 추천을 받아 주세요.</div>}
           </div>
           <div className="panel">
-            <p className="eyebrow">장소 추천</p>
-            <h2>{lockedCandidate ? `${lockedCandidate.hub.displayName} 반경 ${lockedCandidate.hub.searchRadiusMeters}m` : "지역 확정 전"}</h2>
+            <p className="eyebrow">이 근처에서</p>
+            <h2>{lockedCandidate ? `${lockedCandidate.hub.displayName} 근처` : "지역을 먼저 정해 주세요"}</h2>
             {activeMeeting?.venues.length ? (
               <div className="list compact">
                 {activeMeeting.venues.map((venue) => (
                   <article className="venue" key={venue.id}>
-                    <div>
-                      <strong>{venue.displayName}</strong>
-                      <p>{venue.category} · {venue.distanceFromHubMeters.value ?? "unknown"}m · 영업 {venue.openingStatus.value ?? "미확인"}</p>
+                    <div className="brand-lockup">
+                      <div className="venue-mark">{venue.category.slice(0, 1)}</div>
+                      <div>
+                        <strong>{venue.displayName}</strong>
+                        <p>{venue.category} · {venue.distanceFromHubMeters.value ?? "거리 미확인"}m · {venue.openingStatus.value ?? "영업 미확인"}</p>
+                      </div>
                     </div>
-                    <button type="button" onClick={() => confirmVenue(venue.id)}>장소 확정</button>
+                    <button type="button" onClick={() => confirmVenue(venue.id)}>여기로</button>
                   </article>
                 ))}
               </div>
-            ) : <div className="empty">지역을 확정하면 실제 장소 후보가 표시됩니다. Fixture에서는 별점·영업시간을 임의 생성하지 않습니다.</div>}
+            ) : <div className="empty">지역을 정하면 근처 가게가 나와요. 샘플 모드에서는 별점·영업시간을 만들어 넣지 않습니다.</div>}
             {activeMeeting?.state === "confirmed" ? (
-              <button type="button" className="primary" onClick={completeMeeting}><Check size={18} /> 모임 완료 및 장부 반영</button>
+              <button type="button" className="primary" onClick={completeMeeting}><Check size={18} /> 만남 끝내고 기록하기</button>
             ) : null}
           </div>
         </section>
@@ -1047,12 +1133,12 @@ export function FairTurnApp() {
       {activeTab === "ledger" ? (
         <section className="screen two-col">
           <div className="panel">
-            <p className="eyebrow">공평성 기록</p>
-            <h2>사람을 평가하지 않고 이동 부담 균형만 봅니다.</h2>
-            {activeGroup ? <LedgerBars ledger={activeGroup.ledger} friends={state.friends} /> : <div className="empty">그룹이 없습니다.</div>}
+            <p className="eyebrow">번갈아 온 기록</p>
+            <h2>누가 더 많이 왔는지, 숫자로만 남겨 둬요.</h2>
+            {activeGroup ? <LedgerBars ledger={activeGroup.ledger} friends={state.friends} /> : <div className="empty">그룹이 아직 없어요.</div>}
           </div>
           <div className="panel">
-            <h3>다음 턴 제안</h3>
+            <h3>다음에 덜 오게 할 사람</h3>
             {activeGroup ? (
               <ul className="metric-list">
                 {Object.entries(activeGroup.ledger).sort((a, b) => b[1] - a[1]).map(([friendId, value]) => (
@@ -1060,7 +1146,7 @@ export function FairTurnApp() {
                 ))}
               </ul>
             ) : null}
-            <p className="hint">양수는 최근 평균보다 더 많이 이동한 부담을 뜻합니다. 다음 모임에서는 해당 참여자 쪽으로 보정하는 후보가 유리해집니다.</p>
+            <p className="hint">숫자가 클수록 최근에 더 멀리 온 사람이에요. 다음 약속에서는 그쪽이 덜 가게 맞춰집니다.</p>
           </div>
         </section>
       ) : null}
@@ -1068,25 +1154,48 @@ export function FairTurnApp() {
       {activeTab === "settings" ? (
         <section className="screen two-col">
           <div className="panel">
-            <p className="eyebrow">내 설정과 개인정보</p>
-            <h2>위치는 내가 정한 범위만 나갑니다.</h2>
-            <label>표시 이름<input value={state.profileName} onChange={(event) => updateState((previous) => ({ ...previous, profileName: event.target.value }))} /></label>
+            <p className="eyebrow">나와 위치</p>
+            <h2>동네만 공유하고, 집 주소는 남겨 둬요.</h2>
+            <label>내 이름<input value={state.profileName} onChange={(event) => updateState((previous) => ({ ...previous, profileName: event.target.value }))} /></label>
             <ul className="policy-list">
-              <li><Shield size={18} /> 그룹에 공유할 때 정확한 주소와 좌표는 빼 둡니다.</li>
-              <li><Shield size={18} /> 초대 토큰은 예측하기 어렵게 만들고 서버에서는 해시 저장 구조를 사용합니다.</li>
-              <li><Shield size={18} /> 비회원 데이터는 해당 모임에만 사용하며 삭제 정책을 문서화했습니다.</li>
-              <li><Shield size={18} /> Fixture는 프로덕션 결과처럼 조용히 사용되지 않도록 화면에 표시됩니다.</li>
+              <li><Shield size={18} /> 친구에게는 정확한 주소와 좌표를 보내지 않아요.</li>
+              <li><Shield size={18} /> 초대 링크는 짐작하기 어렵게 만들어요.</li>
+              <li><Shield size={18} /> 손님 정보는 그 약속에만 쓰여요.</li>
+              <li><Shield size={18} /> 샘플 계산은 실제 결과처럼 숨기지 않고 표시해요.</li>
             </ul>
           </div>
           <div className="panel">
-            <p className="eyebrow">Provider/API 상태</p>
-            <h2>외부 키와 데이터 준비 상태</h2>
-            <button type="button" className="primary" onClick={checkProviders}><Database size={18} /> 상태 확인</button>
-            <p className="mono">{providerStatus}</p>
-            <button type="button" onClick={() => window.localStorage.removeItem(STORAGE_KEY)}>로컬 데모 저장소 삭제</button>
+            <p className="eyebrow">연결 상태</p>
+            <h2>지도·교통 데이터가 준비됐는지</h2>
+            <button type="button" className="primary" onClick={checkProviders}><Database size={18} /> 확인하기</button>
+            <p className="mono">{providerStatus === "확인 전" ? "아직 확인하지 않았어요." : providerStatus}</p>
+            <button type="button" onClick={() => window.localStorage.removeItem(STORAGE_KEY)}>이 기기 샘플 지우기</button>
           </div>
         </section>
       ) : null}
+
+      <nav className="bottom-nav" aria-label="FairTurn 주요 화면">
+        <button type="button" className={currentNav === "home" ? "active" : ""} onClick={() => setActiveTab("home")}>
+          <Home size={20} />
+          홈
+        </button>
+        <button type="button" className={currentNav === "people" ? "active" : ""} onClick={() => setActiveTab("friends")}>
+          <Users size={20} />
+          친구
+        </button>
+        <button type="button" className={currentNav === "meeting" ? "active" : ""} onClick={openMeetingTab}>
+          <MapPin size={20} />
+          약속
+        </button>
+        <button type="button" className={currentNav === "ledger" ? "active" : ""} onClick={() => setActiveTab("ledger")}>
+          <Scale size={20} />
+          기록
+        </button>
+        <button type="button" className={currentNav === "settings" ? "active" : ""} onClick={() => setActiveTab("settings")}>
+          <MoreHorizontal size={20} />
+          더보기
+        </button>
+      </nav>
     </main>
   );
 }
@@ -1126,23 +1235,23 @@ function LedgerBars({ ledger, friends }: { ledger: Record<string, number>; frien
 function StatusPanel({ meeting, warnings }: { meeting: MeetingRecord | null; warnings: string[] }) {
   return (
     <div className="panel">
-      <p className="eyebrow">지금 모임</p>
-      <h2>{meeting ? meeting.title : "진행 중인 모임 없음"}</h2>
+      <p className="eyebrow">지금 이 약속</p>
+      <h2>{meeting ? meeting.title : "아직 진행 중인 약속이 없어요"}</h2>
       <ul className="state-machine">
         {[
           ["draft", "초안"],
-          ["collecting", "입력"],
-          ["calculating", "계산"],
+          ["collecting", "준비"],
+          ["calculating", "찾기"],
           ["voting", "투표"],
-          ["region_locked", "지역 확정"],
-          ["venue_voting", "장소 투표"],
+          ["region_locked", "지역"],
+          ["venue_voting", "장소"],
           ["confirmed", "확정"],
-          ["completed", "완료"]
+          ["completed", "끝"]
         ].map(([state, label]) => (
           <li key={state} className={meeting?.state === state ? "current" : ""}>{label}</li>
         ))}
       </ul>
-      <p>정확한 좌표는 숨기고, 권역과 허브만 공유합니다.</p>
+      <p>친구에게는 동네와 역만 보여요.</p>
       {warnings.length > 0 ? <div className="notice warn">{warnings.slice(-3).join(" · ")}</div> : null}
     </div>
   );
@@ -1170,7 +1279,7 @@ function RouteMap({ meeting }: { meeting: MeetingRecord }) {
         </div>
       ) : null}
       <div className="map-caption">
-        정확 좌표 대신 공유 가능한 권역과 허브만 표시합니다. 상세 경로 수치는 아래 표에서 사용할 수 있습니다.
+        동네와 만날 역만 보여요. 집 주소는 지도에 올리지 않습니다.
       </div>
     </div>
   );

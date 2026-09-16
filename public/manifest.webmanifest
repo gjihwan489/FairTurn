@@ -4,7 +4,7 @@
   "description": "여러 번의 약속에서 이동 부담을 번갈아 공평하게 만드는 장소 결정 서비스",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#070707",
-  "theme_color": "#0a0a0a",
+  "background_color": "#f6f1ea",
+  "theme_color": "#e45a3c",
   "icons": []
 }
