@@ -680,7 +680,7 @@ export function FairTurnApp() {
       <header className="topbar">
         <div>
           <p className="eyebrow">FairTurn</p>
-          <h1>한 번의 중간보다, 여러 번의 균형</h1>
+          <h1>만날 장소, 번갈아가며 공평하게</h1>
         </div>
         <div className="status-strip" aria-live="polite">
           <StateBadge label={offline ? "오프라인" : "온라인"} tone={offline ? "bad" : "good"} />
@@ -719,10 +719,10 @@ export function FairTurnApp() {
       {activeTab === "home" ? (
         <section className="screen two-col">
           <div className="hero-panel">
-            <p className="eyebrow">누적 공평성 기반 약속 장소 결정</p>
-            <h2>이동시간, 귀가, 상권, 이전 부담을 같은 계산 위에 올립니다.</h2>
+            <p className="eyebrow">여러 번 만날수록 더 공평해지는 약속</p>
+            <h2>이번엔 가까운 쪽, 다음엔 먼 쪽이 덜 가게.</h2>
             <p>
-              좌표 평균은 후보를 줄이는 데만 쓰고, 최종 결과는 홍대입구·신도림·신중동처럼 실제로 만날 수 있는 허브로만 보여줍니다.
+              중간 지점이 아니라, 실제로 모이기 쉬운 역·상권에서 고릅니다. 지난 만남의 이동 부담도 같이 봅니다.
             </p>
             <div className="actions">
               <button type="button" className="primary" onClick={loadDemo}>
@@ -750,7 +750,7 @@ export function FairTurnApp() {
           <div className="section-header">
             <div>
               <p className="eyebrow">친구 관리</p>
-              <h2>localAlias와 displayName을 분리합니다.</h2>
+              <h2>내가 부르는 이름과 친구가 쓰는 이름을 나눠 둡니다.</h2>
             </div>
             <button type="button" className="primary" onClick={addFriend}><Plus size={18} /> 친구 추가</button>
           </div>
@@ -797,7 +797,7 @@ export function FairTurnApp() {
           <div className="section-header">
             <div>
               <p className="eyebrow">그룹</p>
-              <h2>공평성 장부는 그룹별로 분리됩니다.</h2>
+              <h2>그룹마다 누가 많이 움직였는지 따로 쌓입니다.</h2>
             </div>
           </div>
           <div className="panel form-grid">
@@ -874,7 +874,7 @@ export function FairTurnApp() {
           <div className="section-header">
             <div>
               <p className="eyebrow">참여자별 비공개 입력</p>
-              <h2>정확한 출발지와 귀가지는 공유 DTO에 포함하지 않습니다.</h2>
+              <h2>정확한 주소는 친구에게 공유되지 않습니다.</h2>
             </div>
             <div className="actions">
               <button type="button" onClick={addGuestParticipant}><Users size={18} /> 비회원 추가</button>
@@ -933,7 +933,7 @@ export function FairTurnApp() {
           <div className="section-header">
             <div>
               <p className="eyebrow">후보 지역 결과</p>
-              <h2>균형·놀기·귀가 후보를 중복 없이 표시합니다.</h2>
+              <h2>균형, 놀기, 귀가 좋은 곳을 겹치지 않게 보여 줍니다.</h2>
             </div>
             <button type="button" className="primary" onClick={calculate} disabled={!activeMeeting || loading}>
               <RefreshCw size={18} /> 재계산
@@ -996,7 +996,7 @@ export function FairTurnApp() {
         <section className="screen two-col">
           <div className="panel">
             <p className="eyebrow">지역 투표</p>
-            <h2>revision {activeMeeting?.revision ?? "-"} 후보에 투표합니다.</h2>
+            <h2>이번 후보에 한 표씩 남깁니다.</h2>
             {activeMeeting?.candidates.length ? (
               <>
                 <div className="form-grid">
@@ -1069,10 +1069,10 @@ export function FairTurnApp() {
         <section className="screen two-col">
           <div className="panel">
             <p className="eyebrow">내 설정과 개인정보</p>
-            <h2>위치 공개 범위를 제어합니다.</h2>
+            <h2>위치는 내가 정한 범위만 나갑니다.</h2>
             <label>표시 이름<input value={state.profileName} onChange={(event) => updateState((previous) => ({ ...previous, profileName: event.target.value }))} /></label>
             <ul className="policy-list">
-              <li><Shield size={18} /> 그룹 공유 DTO에는 정확한 주소·좌표를 포함하지 않습니다.</li>
+              <li><Shield size={18} /> 그룹에 공유할 때 정확한 주소와 좌표는 빼 둡니다.</li>
               <li><Shield size={18} /> 초대 토큰은 예측하기 어렵게 만들고 서버에서는 해시 저장 구조를 사용합니다.</li>
               <li><Shield size={18} /> 비회원 데이터는 해당 모임에만 사용하며 삭제 정책을 문서화했습니다.</li>
               <li><Shield size={18} /> Fixture는 프로덕션 결과처럼 조용히 사용되지 않도록 화면에 표시됩니다.</li>
@@ -1126,23 +1126,23 @@ function LedgerBars({ ledger, friends }: { ledger: Record<string, number>; frien
 function StatusPanel({ meeting, warnings }: { meeting: MeetingRecord | null; warnings: string[] }) {
   return (
     <div className="panel">
-      <p className="eyebrow">상태 설계</p>
-      <h2>{meeting ? meeting.title : "활성 모임 없음"}</h2>
+      <p className="eyebrow">지금 모임</p>
+      <h2>{meeting ? meeting.title : "진행 중인 모임 없음"}</h2>
       <ul className="state-machine">
-        {["draft", "collecting", "calculating", "voting", "region_locked", "venue_voting", "confirmed", "completed"].map((state) => (
-          <li key={state} className={meeting?.state === state ? "current" : ""}>{state}</li>
+        {[
+          ["draft", "초안"],
+          ["collecting", "입력"],
+          ["calculating", "계산"],
+          ["voting", "투표"],
+          ["region_locked", "지역 확정"],
+          ["venue_voting", "장소 투표"],
+          ["confirmed", "확정"],
+          ["completed", "완료"]
+        ].map(([state, label]) => (
+          <li key={state} className={meeting?.state === state ? "current" : ""}>{label}</li>
         ))}
       </ul>
-      <div className="status-grid">
-        <StateBadge label="로딩 처리" />
-        <StateBadge label="빈 화면 처리" />
-        <StateBadge label="부분 데이터 처리" />
-        <StateBadge label="오류 처리" />
-        <StateBadge label="권한 없음 문서화" />
-        <StateBadge label="링크 만료 문서화" />
-        <StateBadge label="재연결 감지" />
-        <StateBadge label="데모 데이터 표시" tone="warn" />
-      </div>
+      <p>정확한 좌표는 숨기고, 권역과 허브만 공유합니다.</p>
       {warnings.length > 0 ? <div className="notice warn">{warnings.slice(-3).join(" · ")}</div> : null}
     </div>
   );
