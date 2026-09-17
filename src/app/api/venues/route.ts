@@ -1,16 +1,21 @@
 import { NextResponse } from "next/server";
-import { recommendVenuesForCandidate } from "@/domain/recommendation";
-import type { MeetingCandidate } from "@/domain/types";
+import { recommendVenuesForHub } from "@/domain/recommendation";
+import { apiError, parseJsonBody, rateLimited } from "@/lib/api";
+import { venuesRequestSchema } from "@/lib/validation";
 
 export async function POST(request: Request) {
-  const body = (await request.json()) as {
-    candidate: MeetingCandidate;
-    categories: string[];
-  };
-  const venues = await recommendVenuesForCandidate(body.candidate, body.categories ?? []);
-  return NextResponse.json({
-    ok: true,
-    demoData: true,
-    venues
-  });
+  const limited = rateLimited("venues", request);
+  if (limited) return limited;
+  try {
+    const body = await parseJsonBody(request);
+    const parsed = venuesRequestSchema.parse(body);
+    const venues = await recommendVenuesForHub(parsed);
+    return NextResponse.json({
+      ok: true,
+      demoData: true,
+      venues
+    });
+  } catch (error) {
+    return apiError(error);
+  }
 }

@@ -31,7 +31,26 @@ FAIRTURN_PROVIDER_MODE=live
 FAIRTURN_ENABLE_LIVE_PROVIDERS=true
 FAIRTURN_INVITE_TOKEN_SECRET=
 FAIRTURN_LOCATION_ENCRYPTION_KEY=
+FAIRTURN_RATE_LIMIT_WINDOW_MS=60000
+FAIRTURN_RATE_LIMIT_MAX=60
 ```
+
+`FAIRTURN_INVITE_TOKEN_SECRET`은 production에서 필수입니다. 개발 기본 secret은 production에서 거부됩니다.
+
+## Migration Notes
+
+- 신규 DB에는 `001_initial.sql`부터 순서대로 적용합니다.
+- 이미 초기 스키마를 적용한 DB는 `002_fix_group_members_nullable_key.sql`을 추가 적용해 `group_members`의 nullable 복합 PK 문제를 수정합니다.
+- migration 전 snapshot 또는 managed backup을 생성하세요.
+- 이 저장소의 `npm run db:migrate`는 `DATABASE_URL`이 없을 때 SQL 구조만 검증합니다. 운영 DB에는 배포 환경의 migration runner로 적용하세요.
+
+## Rate Limit
+
+현재 API rate limiter는 `FAIRTURN_RATE_LIMIT_WINDOW_MS`와 `FAIRTURN_RATE_LIMIT_MAX`를 사용하는 인메모리 구현입니다. 단일 Node 인스턴스 개발·데모에는 충분하지만, 서버리스·다중 인스턴스 운영에서는 Redis 호환 저장소로 교체해야 합니다. `x-forwarded-for`는 배포 프록시 신뢰 경계가 정해진 뒤에만 신뢰하세요.
+
+## PWA Scope
+
+manifest와 설치 아이콘은 제공하지만 서비스 워커 캐시는 없습니다. 따라서 현재 범위는 “설치형 PWA”이며 완전 오프라인 앱이 아닙니다. 오프라인 상태에서는 서버 추천과 장소 추천 API가 실행되지 않습니다.
 
 ## Caching
 

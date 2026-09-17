@@ -4,13 +4,13 @@ const transitions: Record<MeetingState, MeetingState[]> = {
   draft: ["collecting", "cancelled", "expired"],
   collecting: ["calculating", "draft", "cancelled", "expired"],
   calculating: ["voting", "calculation_failed", "collecting", "cancelled"],
-  voting: ["region_locked", "calculating", "cancelled", "expired"],
-  region_locked: ["venue_voting", "confirmed", "cancelled"],
+  voting: ["region_locked", "calculating", "collecting", "cancelled", "expired"],
+  region_locked: ["venue_voting", "confirmed", "collecting", "cancelled"],
   venue_voting: ["confirmed", "region_locked", "cancelled"],
   confirmed: ["completed", "cancelled"],
   completed: [],
   cancelled: [],
-  calculation_failed: ["collecting", "cancelled"],
+  calculation_failed: ["calculating", "collecting", "cancelled"],
   expired: ["collecting", "cancelled"]
 };
 
@@ -47,9 +47,33 @@ export function validVotesForRevision(votes: VoteInput[], revision: number) {
   return votes.filter((vote) => vote.revision === revision);
 }
 
-export function castVote(votes: VoteInput[], vote: VoteInput, settings: VoteSettings) {
+export interface VoteContext {
+  meetingId: string;
+  revision: number;
+  participantIds: string[];
+  candidateIds: string[];
+}
+
+function assertVoteInContext(vote: VoteInput, context?: VoteContext) {
+  if (!context) return;
+  if (vote.meetingId !== context.meetingId) {
+    throw new Error("다른 모임의 투표는 저장할 수 없습니다.");
+  }
+  if (vote.revision !== context.revision) {
+    throw new Error("현재 후보 revision과 다른 투표는 저장할 수 없습니다.");
+  }
+  if (!context.participantIds.includes(vote.participantId)) {
+    throw new Error("현재 모임 참여자만 투표할 수 있습니다.");
+  }
+  if (!context.candidateIds.includes(vote.candidateId)) {
+    throw new Error("현재 revision의 후보에만 투표할 수 있습니다.");
+  }
+}
+
+export function castVote(votes: VoteInput[], vote: VoteInput, settings: VoteSettings, context?: VoteContext) {
+  assertVoteInContext(vote, context);
   if (settings.deadline && new Date(vote.createdAt) > new Date(settings.deadline)) {
-    throw new Error("Voting deadline has passed.");
+    throw new Error("투표 마감 이후에는 표를 저장할 수 없습니다.");
   }
   const sameParticipant = votes.find(
     (existing) =>
@@ -74,13 +98,26 @@ export function castVote(votes: VoteInput[], vote: VoteInput, settings: VoteSett
 }
 
 export function tallyVotes(params: {
+  meetingId?: string;
   candidates: MeetingCandidate[];
   participantIds: string[];
   votes: VoteInput[];
   revision: number;
   settings: VoteSettings;
 }): VoteResult {
-  const revisionVotes = validVotesForRevision(params.votes, params.revision);
+  const candidateIds = new Set(params.candidates.filter((candidate) => candidate.revision === params.revision).map((candidate) => candidate.id));
+  const participantIds = new Set(params.participantIds);
+  const seen = new Set<string>();
+  const revisionVotes = params.votes.filter((vote) => {
+    if (params.meetingId && vote.meetingId !== params.meetingId) return false;
+    if (vote.revision !== params.revision) return false;
+    if (!participantIds.has(vote.participantId)) return false;
+    if (!candidateIds.has(vote.candidateId)) return false;
+    if (params.settings.deadline && new Date(vote.createdAt) > new Date(params.settings.deadline)) return false;
+    if (seen.has(vote.participantId)) return false;
+    seen.add(vote.participantId);
+    return true;
+  });
   const missingParticipantIds = params.participantIds.filter(
     (participantId) => !revisionVotes.some((vote) => vote.participantId === participantId)
   );

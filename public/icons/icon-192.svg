@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192" role="img" aria-label="FairTurn">
+  <rect width="192" height="192" rx="36" fill="#080808"/>
+  <circle cx="96" cy="96" r="58" fill="none" stroke="#2a2a2a" stroke-width="14"/>
+  <path d="M54 106c18-34 53-56 84-52" fill="none" stroke="#facc15" stroke-width="16" stroke-linecap="round"/>
+  <path d="M138 54l-6 31 29-12" fill="none" stroke="#facc15" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="96" y="124" text-anchor="middle" font-family="Arial, sans-serif" font-size="42" font-weight="700" fill="#ffffff">FT</text>
+</svg>

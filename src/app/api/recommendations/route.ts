@@ -2,10 +2,13 @@ import { NextResponse } from "next/server";
 import { calculateRecommendations } from "@/domain/recommendation";
 import { maskSensitiveError } from "@/domain/privacy";
 import { recommendationRequestSchema } from "@/lib/validation";
+import { apiError, parseJsonBody, rateLimited } from "@/lib/api";
 
 export async function POST(request: Request) {
+  const limited = rateLimited("recommendations", request);
+  if (limited) return limited;
   try {
-    const body = await request.json();
+    const body = await parseJsonBody(request);
     const parsed = recommendationRequestSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
@@ -29,6 +32,8 @@ export async function POST(request: Request) {
       }
     });
   } catch (error) {
+    const parsedError = apiError(error);
+    if (parsedError.status !== 500) return parsedError;
     return NextResponse.json(
       {
         ok: false,

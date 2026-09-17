@@ -50,15 +50,23 @@ CREATE TABLE groups (
 );
 
 CREATE TABLE group_members (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   group_id uuid NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
   profile_id uuid REFERENCES profiles(id) ON DELETE SET NULL,
   friend_id uuid REFERENCES friends(id) ON DELETE SET NULL,
   role text NOT NULL DEFAULT 'member',
   joined_at timestamptz NOT NULL DEFAULT now(),
   active boolean NOT NULL DEFAULT true,
-  PRIMARY KEY (group_id, profile_id, friend_id),
-  CHECK (profile_id IS NOT NULL OR friend_id IS NOT NULL)
+  CHECK (num_nonnulls(profile_id, friend_id) = 1)
 );
+
+CREATE UNIQUE INDEX idx_group_members_group_profile_unique
+  ON group_members(group_id, profile_id)
+  WHERE profile_id IS NOT NULL;
+
+CREATE UNIQUE INDEX idx_group_members_group_friend_unique
+  ON group_members(group_id, friend_id)
+  WHERE friend_id IS NOT NULL;
 
 CREATE TABLE meetings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

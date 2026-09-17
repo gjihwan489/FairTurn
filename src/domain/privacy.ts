@@ -5,6 +5,7 @@ export interface SharedParticipantDto {
   id: string;
   displayName: string;
   coarseOriginLabel: string;
+  locationDisclosure: "coarse_only" | "exact_allowed_for_server_only";
   responseStatus: "pending" | "complete";
   preferenceSummary: string[];
 }
@@ -35,6 +36,7 @@ export function sanitizeParticipantForGroup(participant: ParticipantInput): Shar
     id: participant.id,
     displayName: participant.displayName,
     coarseOriginLabel: participant.coarseOriginLabel,
+    locationDisclosure: participant.exactLocationConsent ? "exact_allowed_for_server_only" : "coarse_only",
     responseStatus: participant.origin && participant.returnLocation ? "complete" : "pending",
     preferenceSummary: participant.preferences.activityLikes.slice(0, 3)
   };
@@ -97,6 +99,9 @@ export function createInviteToken() {
 }
 
 export function hashInviteToken(token: string, secret = process.env.FAIRTURN_INVITE_TOKEN_SECRET ?? "fairturn-dev-secret") {
+  if (process.env.NODE_ENV === "production" && (!process.env.FAIRTURN_INVITE_TOKEN_SECRET || secret === "fairturn-dev-secret")) {
+    throw new Error("FAIRTURN_INVITE_TOKEN_SECRET must be configured in production.");
+  }
   return crypto.createHmac("sha256", secret).update(token).digest("hex");
 }
 

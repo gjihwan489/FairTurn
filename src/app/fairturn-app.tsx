@@ -20,9 +20,12 @@ import {
   Users,
   Vote
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { DEFAULT_SCORE_WEIGHTS, PRESET_WEIGHTS } from "@/domain/config";
-import { mean, updateLedger } from "@/domain/scoring";
+import { applyAttendanceLedger } from "@/domain/ledger";
+import { applyRecommendationInputChange } from "@/domain/meeting-state";
+import { stripPrivateLocationForStorage } from "@/domain/storage";
+import { addMinutes, localDateTimeInputToIso, toLocalDateTimeInputValue, validateMeetingTimes } from "@/domain/time";
 import type {
   ActivityType,
   BurdenLedger,
@@ -83,6 +86,9 @@ interface MeetingRecord {
   lockedCandidateId: string | null;
   venues: VenueOption[];
   selectedVenueId: string | null;
+  attendanceByParticipantId: Record<string, "attended" | "absent" | "unknown">;
+  guestLedgerParticipantIds: string[];
+  ledgerAppliedAt: string | null;
   inviteToken: string;
   demoData: boolean;
   warnings: string[];
@@ -247,16 +253,34 @@ function loadState(): AppState {
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (!raw) return initialState();
   try {
-    return JSON.parse(raw) as AppState;
+    return normalizeLoadedState(JSON.parse(raw) as AppState);
   } catch {
     return initialState();
   }
 }
 
+function normalizeLoadedState(state: AppState): AppState {
+  return {
+    ...state,
+    meetings: state.meetings.map((meeting) => ({
+      ...meeting,
+      attendanceByParticipantId:
+        meeting.attendanceByParticipantId ??
+        Object.fromEntries(meeting.participants.map((participant) => [participant.id, "attended"])),
+      guestLedgerParticipantIds: meeting.guestLedgerParticipantIds ?? [],
+      ledgerAppliedAt: meeting.ledgerAppliedAt ?? null
+    }))
+  };
+}
+
 function persistState(state: AppState) {
   if (typeof window !== "undefined") {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(stripPrivateStorageFields(state)));
   }
+}
+
+function stripPrivateStorageFields(state: AppState): AppState {
+  return stripPrivateLocationForStorage(state);
 }
 
 function StateBadge({ label, tone = "neutral" }: { label: string; tone?: "neutral" | "good" | "warn" | "bad" }) {
@@ -293,6 +317,7 @@ export function FairTurnApp() {
   const [voteParticipantId, setVoteParticipantId] = useState("");
   const [voteCandidateId, setVoteCandidateId] = useState("");
   const [offline, setOffline] = useState(false);
+  const skipNextPersist = useRef(false);
 
   useEffect(() => {
     setState(loadState());
@@ -300,7 +325,12 @@ export function FairTurnApp() {
   }, []);
 
   useEffect(() => {
-    if (hydrated) persistState(state);
+    if (!hydrated) return;
+    if (skipNextPersist.current) {
+      skipNextPersist.current = false;
+      return;
+    }
+    persistState(state);
   }, [hydrated, state]);
 
   useEffect(() => {
@@ -391,29 +421,35 @@ export function FairTurnApp() {
     setActiveTab("groups");
   }
 
-  function createMeetingFromGroup(group = activeGroup) {
+function createMeetingFromGroup(group = activeGroup) {
     const targetGroup = group ?? null;
     const friends = targetGroup
       ? state.friends.filter((friend) => targetGroup.memberFriendIds.includes(friend.id) && friend.active)
       : state.friends.filter((friend) => friend.active).slice(0, 4);
+    const start = addMinutes(new Date(), 60 * 24 * 3);
+    const end = addMinutes(start, 180);
+    const deadline = addMinutes(new Date(), 60 * 24 * 2);
     const meeting: MeetingRecord = {
       id: createId("meeting"),
       title: "금요일 저녁 약속",
       groupId: targetGroup?.id ?? null,
       state: "collecting",
-      startsAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 3).toISOString().slice(0, 16),
-      expectedEndsAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 3 + 1000 * 60 * 60 * 3).toISOString().slice(0, 16),
+      startsAt: toLocalDateTimeInputValue(start),
+      expectedEndsAt: toLocalDateTimeInputValue(end),
       activityTypes: ["meal", "cafe"],
       preset: targetGroup?.defaultPreset ?? "balanced",
       candidateCount: 4,
       revision: 1,
-      votingDeadline: new Date(Date.now() + 1000 * 60 * 60 * 24 * 2).toISOString().slice(0, 16),
+      votingDeadline: toLocalDateTimeInputValue(deadline),
       participants: friends.map((friend) => buildParticipant(friend, targetGroup)),
       candidates: [],
       votes: [],
       lockedCandidateId: null,
       venues: [],
       selectedVenueId: null,
+      attendanceByParticipantId: Object.fromEntries(friends.map((friend) => [friend.id, "attended"])),
+      guestLedgerParticipantIds: [],
+      ledgerAppliedAt: null,
       inviteToken: createId("invite"),
       demoData: true,
       warnings: [],
@@ -462,24 +498,30 @@ export function FairTurnApp() {
       recentHubs: ["홍대입구", "강남역"],
       defaultTimeLabel: "금요일 저녁"
     };
+    const start = addMinutes(new Date(), 60 * 24 * 3);
+    const end = addMinutes(start, 180);
+    const deadline = addMinutes(new Date(), 60 * 24 * 2);
     const meeting: MeetingRecord = {
       id: "demo_meeting_1",
       title: "금요일 저녁 약속",
       groupId: group.id,
       state: "collecting",
-      startsAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 3).toISOString().slice(0, 16),
-      expectedEndsAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 3 + 1000 * 60 * 60 * 3).toISOString().slice(0, 16),
+      startsAt: toLocalDateTimeInputValue(start),
+      expectedEndsAt: toLocalDateTimeInputValue(end),
       activityTypes: ["meal", "cafe", "drinks"],
       preset: "balanced",
       candidateCount: 4,
       revision: 1,
-      votingDeadline: new Date(Date.now() + 1000 * 60 * 60 * 24 * 2).toISOString().slice(0, 16),
+      votingDeadline: toLocalDateTimeInputValue(deadline),
       participants: friends.map((friend) => buildParticipant(friend, group)),
       candidates: [],
       votes: [],
       lockedCandidateId: null,
       venues: [],
       selectedVenueId: null,
+      attendanceByParticipantId: Object.fromEntries(friends.map((friend) => [friend.id, "attended"])),
+      guestLedgerParticipantIds: [],
+      ledgerAppliedAt: null,
       inviteToken: "demo-invite-token",
       demoData: true,
       warnings: ["샘플로 시작했어요. 실제 대중교통 결과가 아니라 미리 넣어 둔 경로입니다."],
@@ -505,17 +547,27 @@ export function FairTurnApp() {
     }));
   }
 
+  function updateMeetingRecommendationInput(patch: Partial<MeetingRecord>, warning?: string) {
+    if (!activeMeeting) return;
+    try {
+      updateState((previous) => ({
+        ...previous,
+        meetings: previous.meetings.map((meeting) =>
+          meeting.id === activeMeeting.id ? applyRecommendationInputChange(meeting, patch, warning) : meeting
+        )
+      }));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "추천 입력을 변경할 수 없습니다.");
+    }
+  }
+
   function updateParticipant(participantId: string, patch: Partial<ParticipantInput>) {
     if (!activeMeeting) return;
-    updateMeeting({
+    updateMeetingRecommendationInput({
       participants: activeMeeting.participants.map((participant) =>
         participant.id === participantId ? { ...participant, ...patch } : participant
-      ),
-      revision: activeMeeting.revision + 1,
-      candidates: [],
-      votes: [],
-      warnings: ["참여자 조건이 변경되어 계산 revision이 올라갔고 기존 투표는 초기화되었습니다."]
-    });
+      )
+    }, "참여자 조건이 변경되어 계산 revision이 올라갔고 기존 후보·투표·장소 선택은 초기화되었습니다.");
   }
 
   function addGuestParticipant() {
@@ -535,10 +587,9 @@ export function FairTurnApp() {
       activityLikes: ["meal"],
       needsElevator: false
     };
-    updateMeeting({
+    updateMeetingRecommendationInput({
       participants: [...activeMeeting.participants, buildParticipant(guestFriend, activeGroup)],
-      revision: activeMeeting.revision + 1,
-      state: "collecting",
+      attendanceByParticipantId: { ...activeMeeting.attendanceByParticipantId, [guestFriend.id]: "attended" },
       warnings: ["비회원 참여자는 이 모임에만 사용되며 데모 상태에서는 브라우저 localStorage에만 저장됩니다."]
     });
   }
@@ -547,16 +598,17 @@ export function FairTurnApp() {
     if (!activeMeeting) return;
     setLoading(true);
     setError(null);
-    updateMeeting({ state: assertTransition(activeMeeting.state, "calculating") });
     try {
+      validateMeetingTimes(activeMeeting.startsAt, activeMeeting.expectedEndsAt, activeMeeting.votingDeadline);
+      updateMeeting({ state: assertTransition(activeMeeting.state, "calculating") });
       const response = await fetch("/api/recommendations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           meetingId: activeMeeting.id,
           revision: activeMeeting.revision,
-          startsAt: activeMeeting.startsAt,
-          expectedEndsAt: activeMeeting.expectedEndsAt,
+          startsAt: localDateTimeInputToIso(activeMeeting.startsAt),
+          expectedEndsAt: activeMeeting.expectedEndsAt ? localDateTimeInputToIso(activeMeeting.expectedEndsAt) : null,
           activityTypes: activeMeeting.activityTypes,
           candidateCount: activeMeeting.candidateCount,
           preset: activeMeeting.preset,
@@ -566,6 +618,9 @@ export function FairTurnApp() {
         })
       });
       const result = (await response.json()) as RecommendationResponse;
+      if (!response.ok) {
+        throw new Error((result as RecommendationResponse & { message?: string }).message ?? "추천 계산 요청을 처리할 수 없습니다.");
+      }
       if (!result.ok) {
         updateMeeting({
           state: "calculation_failed",
@@ -610,8 +665,14 @@ export function FairTurnApp() {
         {
           anonymous: false,
           changeAllowed: true,
-          deadline: activeMeeting.votingDeadline ? new Date(activeMeeting.votingDeadline).toISOString() : null,
+          deadline: activeMeeting.votingDeadline ? localDateTimeInputToIso(activeMeeting.votingDeadline) : null,
           autoTieBreak: true
+        },
+        {
+          meetingId: activeMeeting.id,
+          revision: activeMeeting.revision,
+          participantIds: activeMeeting.participants.map((participant) => participant.id),
+          candidateIds: activeMeeting.candidates.map((candidate) => candidate.id)
         }
       );
       updateMeeting({ votes });
@@ -623,6 +684,7 @@ export function FairTurnApp() {
   async function lockRegion(candidateId?: string) {
     if (!activeMeeting) return;
     const tally = tallyVotes({
+      meetingId: activeMeeting.id,
       candidates: activeMeeting.candidates,
       participantIds: activeMeeting.participants.map((participant) => participant.id),
       votes: activeMeeting.votes,
@@ -630,7 +692,7 @@ export function FairTurnApp() {
       settings: {
         anonymous: false,
         changeAllowed: true,
-        deadline: activeMeeting.votingDeadline ? new Date(activeMeeting.votingDeadline).toISOString() : null,
+        deadline: activeMeeting.votingDeadline ? localDateTimeInputToIso(activeMeeting.votingDeadline) : null,
         autoTieBreak: true
       }
     });
@@ -642,7 +704,14 @@ export function FairTurnApp() {
       const response = await fetch("/api/venues", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ candidate, categories: ["식당", "카페", "술집", "영화관"] })
+        body: JSON.stringify({
+          meetingId: activeMeeting.id,
+          candidateId: candidate.id,
+          hubId: candidate.hub.id,
+          hubName: candidate.hub.displayName,
+          radiusMeters: candidate.hub.searchRadiusMeters,
+          categories: ["식당", "카페", "술집", "영화관"]
+        })
       });
       venues = ((await response.json()) as { venues: VenueOption[] }).venues;
     } catch {
@@ -670,11 +739,18 @@ export function FairTurnApp() {
     if (!activeMeeting || !activeGroup) return;
     const candidate = activeMeeting.candidates.find((item) => item.id === activeMeeting.lockedCandidateId);
     if (!candidate) return;
-    const burdens = candidate.burdens.filter((burden) => burden.total !== null);
-    const groupMean = mean(burdens.map((burden) => burden.total ?? 0));
-    const ledger = { ...activeGroup.ledger };
-    for (const burden of burdens) {
-      ledger[burden.participantId] = updateLedger(ledger[burden.participantId] ?? 0, burden.total ?? 0, groupMean);
+    let ledgerResult: ReturnType<typeof applyAttendanceLedger>;
+    try {
+      ledgerResult = applyAttendanceLedger({
+        candidate,
+        currentLedger: activeGroup.ledger,
+        attendanceByParticipantId: activeMeeting.attendanceByParticipantId,
+        permanentParticipantIds: [...activeGroup.memberFriendIds, ...activeMeeting.guestLedgerParticipantIds],
+        alreadyApplied: Boolean(activeMeeting.ledgerAppliedAt)
+      });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "장부 반영에 실패했습니다.");
+      return;
     }
     updateState((previous) => ({
       ...previous,
@@ -682,13 +758,15 @@ export function FairTurnApp() {
         group.id === activeGroup.id
           ? {
               ...group,
-              ledger,
+              ledger: ledgerResult.ledger,
               recentHubs: [candidate.hub.displayName, ...group.recentHubs.filter((hub) => hub !== candidate.hub.displayName)].slice(0, 5)
             }
           : group
       ),
       meetings: previous.meetings.map((meeting) =>
-        meeting.id === activeMeeting.id ? { ...meeting, state: "completed", warnings: [...meeting.warnings, "실제 참석자 기준으로 누적 장부를 반영했습니다."] } : meeting
+        meeting.id === activeMeeting.id
+          ? { ...meeting, state: "completed", ledgerAppliedAt: new Date().toISOString(), warnings: [...meeting.warnings, "실제 참석자 기준으로 누적 장부를 반영했습니다."] }
+          : meeting
       )
     }));
     setActiveTab("ledger");
@@ -701,8 +779,23 @@ export function FairTurnApp() {
     setProviderStatus(`${body.providerMode} / transit:${body.transit.configured ? "configured" : "missing"} / place:${body.place.configured ? "configured" : "missing"} / ${body.transit.warning ?? "정상"}`);
   }
 
+  function clearLocalDemoState() {
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(STORAGE_KEY);
+    }
+    skipNextPersist.current = true;
+    setState(initialState());
+    setSelectedFriendIds([]);
+    setActiveTab("home");
+    setError(null);
+    setVoteParticipantId("");
+    setVoteCandidateId("");
+    setProviderStatus("확인 전");
+  }
+
   const voteResult = activeMeeting
     ? tallyVotes({
+        meetingId: activeMeeting.id,
         candidates: activeMeeting.candidates,
         participantIds: activeMeeting.participants.map((participant) => participant.id),
         votes: activeMeeting.votes,
@@ -710,7 +803,7 @@ export function FairTurnApp() {
         settings: {
           anonymous: false,
           changeAllowed: true,
-          deadline: activeMeeting.votingDeadline ? new Date(activeMeeting.votingDeadline).toISOString() : null,
+          deadline: activeMeeting.votingDeadline ? localDateTimeInputToIso(activeMeeting.votingDeadline) : null,
           autoTieBreak: true
         }
       })
@@ -773,6 +866,13 @@ export function FairTurnApp() {
           <button type="button" className={activeTab === "friends" ? "active" : ""} onClick={() => setActiveTab("friends")}>친구</button>
           <button type="button" className={activeTab === "groups" ? "active" : ""} onClick={() => setActiveTab("groups")}>그룹</button>
         </nav>
+      ) : null}
+
+      {offline ? (
+        <section className="notice warn" role="status">
+          <AlertTriangle size={18} />
+          <span>오프라인 상태에서는 서버 추천·장소 API를 실행할 수 없습니다. 입력 내용은 온라인 복귀 후 다시 계산하세요.</span>
+        </section>
       ) : null}
 
       {error ? (
@@ -925,21 +1025,21 @@ export function FairTurnApp() {
             {activeMeeting ? (
               <div className="form-grid wide">
                 <label>제목<input value={activeMeeting.title} onChange={(event) => updateMeeting({ title: event.target.value })} /></label>
-                <label>시작시각<input type="datetime-local" value={activeMeeting.startsAt} onChange={(event) => updateMeeting({ startsAt: event.target.value, revision: activeMeeting.revision + 1 })} /></label>
-                <label>예상 종료<input type="datetime-local" value={activeMeeting.expectedEndsAt} onChange={(event) => updateMeeting({ expectedEndsAt: event.target.value, revision: activeMeeting.revision + 1 })} /></label>
+                <label>시작시각<input type="datetime-local" value={activeMeeting.startsAt} onChange={(event) => updateMeetingRecommendationInput({ startsAt: event.target.value })} /></label>
+                <label>예상 종료<input type="datetime-local" value={activeMeeting.expectedEndsAt} onChange={(event) => updateMeetingRecommendationInput({ expectedEndsAt: event.target.value })} /></label>
                 <label>투표 마감<input type="datetime-local" value={activeMeeting.votingDeadline} onChange={(event) => updateMeeting({ votingDeadline: event.target.value })} /></label>
                 <label>추천 프리셋
-                  <select value={activeMeeting.preset} onChange={(event) => updateMeeting({ preset: event.target.value as ScoringPreset, revision: activeMeeting.revision + 1 })}>
+                  <select value={activeMeeting.preset} onChange={(event) => updateMeetingRecommendationInput({ preset: event.target.value as ScoringPreset })}>
                     {Object.entries(PRESET_LABELS).map(([key, label]) => <option value={key} key={key}>{label}</option>)}
                   </select>
                 </label>
-                <label>후보 개수<input type="number" min={3} max={4} value={activeMeeting.candidateCount} onChange={(event) => updateMeeting({ candidateCount: Number(event.target.value) })} /></label>
+                <label>후보 개수<input type="number" min={3} max={4} value={activeMeeting.candidateCount} onChange={(event) => updateMeetingRecommendationInput({ candidateCount: Number(event.target.value) })} /></label>
                 <div>
                   <span className="label">활동</span>
                   <div className="chip-grid">
                     {ACTIVITY_OPTIONS.map((activity) => (
                       <label className="check-chip" key={activity.id}>
-                        <input type="checkbox" checked={activeMeeting.activityTypes.includes(activity.id)} onChange={(event) => updateMeeting({ activityTypes: event.target.checked ? [...activeMeeting.activityTypes, activity.id] : activeMeeting.activityTypes.filter((id) => id !== activity.id), revision: activeMeeting.revision + 1 })} />
+                        <input type="checkbox" checked={activeMeeting.activityTypes.includes(activity.id)} onChange={(event) => updateMeetingRecommendationInput({ activityTypes: event.target.checked ? [...activeMeeting.activityTypes, activity.id] : activeMeeting.activityTypes.filter((id) => id !== activity.id) })} />
                         {activity.label}
                       </label>
                     ))}
@@ -1124,7 +1224,49 @@ export function FairTurnApp() {
               </div>
             ) : <div className="empty">지역을 정하면 근처 가게가 나와요. 샘플 모드에서는 별점·영업시간을 만들어 넣지 않습니다.</div>}
             {activeMeeting?.state === "confirmed" ? (
-              <button type="button" className="primary" onClick={completeMeeting}><Check size={18} /> 만남 끝내고 기록하기</button>
+              <>
+                <div className="list compact">
+                  {activeMeeting.participants.map((participant) => {
+                    const isGuest = !activeGroup?.memberFriendIds.includes(participant.id);
+                    return (
+                      <article className="venue" key={participant.id}>
+                        <div>
+                          <strong>{participant.displayName}</strong>
+                          <p>{isGuest ? "비회원은 기본적으로 그룹 장부에서 제외됩니다." : "그룹 장부 반영 대상"}</p>
+                        </div>
+                        <label className="check-line">
+                          <input
+                            type="checkbox"
+                            checked={activeMeeting.attendanceByParticipantId[participant.id] !== "absent"}
+                            onChange={(event) => updateMeeting({
+                              attendanceByParticipantId: {
+                                ...activeMeeting.attendanceByParticipantId,
+                                [participant.id]: event.target.checked ? "attended" : "absent"
+                              }
+                            })}
+                          />
+                          참석
+                        </label>
+                        {isGuest ? (
+                          <label className="check-line">
+                            <input
+                              type="checkbox"
+                              checked={activeMeeting.guestLedgerParticipantIds.includes(participant.id)}
+                              onChange={(event) => updateMeeting({
+                                guestLedgerParticipantIds: event.target.checked
+                                  ? [...activeMeeting.guestLedgerParticipantIds, participant.id]
+                                  : activeMeeting.guestLedgerParticipantIds.filter((id) => id !== participant.id)
+                              })}
+                            />
+                            그룹 장부에 저장
+                          </label>
+                        ) : null}
+                      </article>
+                    );
+                  })}
+                </div>
+                <button type="button" className="primary" onClick={completeMeeting}><Check size={18} /> 만남 끝내고 기록하기</button>
+              </>
             ) : null}
           </div>
         </section>
@@ -1169,7 +1311,8 @@ export function FairTurnApp() {
             <h2>지도·교통 데이터가 준비됐는지</h2>
             <button type="button" className="primary" onClick={checkProviders}><Database size={18} /> 확인하기</button>
             <p className="mono">{providerStatus === "확인 전" ? "아직 확인하지 않았어요." : providerStatus}</p>
-            <button type="button" onClick={() => window.localStorage.removeItem(STORAGE_KEY)}>이 기기 샘플 지우기</button>
+            <button type="button" onClick={clearLocalDemoState}>이 기기 샘플 지우기</button>
+            <p className="hint">삭제하면 localStorage와 화면 상태, 선택된 투표·오류·임시 UI 상태가 초기화됩니다.</p>
           </div>
         </section>
       ) : null}

@@ -224,3 +224,14 @@ export async function recommendVenuesForCandidate(candidate: MeetingCandidate, c
     radiusMeters: candidate.hub.searchRadiusMeters
   });
 }
+
+export async function recommendVenuesForHub(input: {
+  meetingId: string;
+  hubId: string;
+  hubName: string;
+  radiusMeters: number;
+  categories: string[];
+}): Promise<VenueOption[]> {
+  const provider = getPlaceProvider("fixture");
+  return provider.searchVenues(input);
+}

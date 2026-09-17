@@ -48,3 +48,13 @@ References:
 ## Fixture Policy
 
 Fixture는 프로덕션 결과처럼 조용히 사용하지 않습니다. API 응답과 UI 모두 `데모 데이터`를 표시합니다.
+
+현재 구현은 Fixture Provider와 live adapter 확장 지점까지입니다. `FAIRTURN_PROVIDER_MODE=live` 설정만으로 ODsay/Kakao 실호출이 완성되는 것은 아니며, 실제 API 응답 정규화와 약관에 맞는 캐시 정책 연결이 다음 단계입니다.
+
+## API Error Policy
+
+- JSON 파싱 실패: 400
+- Zod 스키마 오류: 400
+- rate limit 초과: 429 + `Retry-After`
+- Provider 장애: 향후 live adapter에서 502 또는 503으로 매핑
+- 내부 오류: 민감정보 마스킹 후 500

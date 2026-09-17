@@ -4,7 +4,14 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "FairTurn",
   description: "여러 번의 약속에서 이동 부담을 번갈아 공평하게 만드는 장소 결정 서비스",
-  manifest: "/manifest.webmanifest"
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [
+      { url: "/icons/icon-192.svg", sizes: "192x192", type: "image/svg+xml" },
+      { url: "/icons/icon-512.svg", sizes: "512x512", type: "image/svg+xml" }
+    ],
+    apple: [{ url: "/icons/icon-192.svg", sizes: "192x192", type: "image/svg+xml" }]
+  }
 };
 
 export const viewport: Viewport = {

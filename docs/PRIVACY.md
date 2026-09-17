@@ -8,6 +8,8 @@ FairTurn의 기본 원칙은 정확한 출발지와 귀가지를 다른 참여�
 - 그룹 공유 DTO는 `sanitizeSharedMeeting`을 통과합니다.
 - 공유 후보에는 허브명, 권역, 부담 수치, 설명 fact만 포함합니다.
 - 테스트는 `exactOrigin`, `returnCoordinate`, 원본 주소, `lat`, `lng`, `coordinate`가 공유 DTO에 없는지 확인합니다.
+- `exactLocationConsent=false`인 참여자는 공유 DTO에서 `locationDisclosure=coarse_only`로 표시됩니다. 동의가 있어도 정확 주소·좌표는 서버 계산 범위로만 제한하고 그룹 공유 DTO에는 넣지 않습니다.
+- localStorage 저장 전 참여자 위치의 원본 주소 문자열을 제거합니다. 데모 UI는 좌표와 권역 라벨만 저장합니다.
 - 오류 메시지는 `maskSensitiveError`로 API 키와 좌표 형태를 마스킹합니다.
 - 초대 토큰은 `createInviteToken`으로 난수 생성하고 `hashInviteToken`으로 저장할 수 있습니다.
 - Fixture와 로컬 seed는 원본 개인 위치를 로그나 파일에 쓰지 않습니다.
@@ -21,6 +23,7 @@ FairTurn의 기본 원칙은 정확한 출발지와 귀가지를 다른 참여�
 - 위치 삭제 요청 API
 - 비회원 위치 삭제 보존기간 job
 - 원본 좌표가 들어가지 않는 캐시 키
+- 운영 invite secret 누락 시 명시적 실패
 
 ## Guest Data
 

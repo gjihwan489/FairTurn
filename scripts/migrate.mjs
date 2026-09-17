@@ -8,13 +8,16 @@ if (files.length === 0) {
   throw new Error("No SQL migrations found.");
 }
 
+const combinedSql = [];
 for (const file of files) {
-  const sql = await readFile(join(migrationDir, file), "utf8");
-  const required = ["CREATE TABLE profiles", "CREATE TABLE meetings", "CREATE TABLE private_locations", "CREATE TABLE burden_ledgers"];
-  for (const token of required) {
-    if (!sql.includes(token)) {
-      throw new Error(`${file} is missing required token: ${token}`);
-    }
+  combinedSql.push(await readFile(join(migrationDir, file), "utf8"));
+}
+
+const fullSchema = combinedSql.join("\n");
+const required = ["CREATE TABLE profiles", "CREATE TABLE meetings", "CREATE TABLE private_locations", "CREATE TABLE burden_ledgers"];
+for (const token of required) {
+  if (!fullSchema.includes(token)) {
+    throw new Error(`Migrations are missing required token: ${token}`);
   }
 }
 
